@@ -96,6 +96,14 @@ app.post("/api/logout", authMiddleware, (req, res) => {
   res.json({ message: "Logged out successfully" });
 });
 
+// ─── DEBUG: See all users in DB (remove this in production!) ─────────────────
+app.get("/api/debug/users", async (req, res) => {
+  const result = await pool.query(
+    "SELECT id, name, email, created_at FROM users ORDER BY id DESC",
+  );
+  res.json({ total: result.rows.length, users: result.rows });
+});
+
 // ─── Get current user (protected) ────────────────────────────────────────────
 app.get("/api/me", authMiddleware, async (req, res) => {
   const result = await pool.query(
