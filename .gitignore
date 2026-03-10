@@ -1,0 +1,9 @@
+# Ignore node modules (dependencies installed by npm)
+node_modules/
+.env
+dist/
+build/
+# Ignore lock file (optional depending on project)
+package-lock.json
+
+
