@@ -7,3 +7,5 @@ build/
 package-lock.json
 
 
+
+/generated/prisma

@@ -4,9 +4,12 @@ import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import { OAuth2Client } from "google-auth-library";
 import pool from "./db.js";
 
 dotenv.config();
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const app = express();
 const PORT = 3000;
@@ -17,6 +20,11 @@ const __dirname = path.dirname(__filename);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+// ─── CONFIG ENDPOINT ──────────────────────────────────────────────────────────
+app.get("/api/config", (req, res) => {
+  res.json({ GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID });
+});
 
 // ─── Middleware: Verify JWT token ─────────────────────────────────────────────
 function authMiddleware(req, res, next) {
@@ -88,6 +96,49 @@ app.post("/api/signin", async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: "Server error: " + err.message });
+  }
+});
+
+// ─── GOOGLE LOGIN ─────────────────────────────────────────────────────────────
+app.post("/api/auth/google", async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) return res.status(400).json({ error: "No credential provided" });
+
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { email, name } = payload;
+
+    // Check if user exists
+    let result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    let user = result.rows[0];
+
+    // If user doesn't exist, create them with a random password
+    if (!user) {
+      const randomPassword = await bcrypt.hash(Math.random().toString(36).slice(-10), 10);
+      const insertResult = await pool.query(
+        "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING *",
+        [name, email, randomPassword]
+      );
+      user = insertResult.rows[0];
+    }
+
+    // Sign JWT
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.json({
+      message: "Signed in with Google!",
+      token,
+      user: { id: user.id, name: user.name, email: user.email },
+    });
+  } catch (err) {
+    console.error("Google Auth Error:", err);
+    res.status(500).json({ error: "Google Authentication failed" });
   }
 });
 

@@ -9,6 +9,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
       *,
       *::before,
@@ -318,6 +319,11 @@
           </button>
         </div>
 
+        <div id="google-btn-container" style="display: flex; justify-content: center; margin-bottom: 20px;">
+          <!-- Google button will be rendered here -->
+        </div>
+        <div style="text-align: center; color: rgba(255,255,255,0.4); margin-bottom: 20px; font-size: 13px;">Or continue with email</div>
+
         <!-- Sign In Form -->
         <form id="signin-form" onsubmit="handleSignin(event)">
           <div class="form-group">
@@ -429,6 +435,57 @@
         el.textContent = text;
         el.className = "msg " + type;
         el.style.display = text ? "block" : "none";
+      }
+
+      // ── Google Auth ──
+      async function initGoogleAuth() {
+        console.log("Initializing Google Auth...");
+        try {
+          const res = await fetch("/api/config");
+          const config = await res.json();
+          
+          if (config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_ID !== "your_google_client_id_here.apps.googleusercontent.com") {
+            // Wait for google script to be available
+            const checkGoogleInterval = setInterval(() => {
+              if (window.google && window.google.accounts) {
+                clearInterval(checkGoogleInterval);
+                google.accounts.id.initialize({
+                  client_id: config.GOOGLE_CLIENT_ID,
+                  callback: handleGoogleCredentialResponse,
+                });
+                google.accounts.id.renderButton(
+                  document.getElementById("google-btn-container"),
+                  { theme: "outline", size: "large", width: "100%", text: "continue_with" }
+                );
+                console.log("Google button rendered.");
+              }
+            }, 100);
+          } else {
+            console.error("Missing or dummy GOOGLE_CLIENT_ID. Please update your .env file.");
+            document.getElementById("google-btn-container").innerHTML = 
+              '<p style="color: #f87171; font-size: 12px; text-align: center;">Google Client ID missing in .env</p>';
+          }
+        } catch (err) {
+          console.error("Failed to load Google Auth config", err);
+        }
+      }
+
+      // Initialize on load
+      window.addEventListener('load', initGoogleAuth);
+
+      async function handleGoogleCredentialResponse(response) {
+        try {
+          const res = await fetch("/api/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ credential: response.credential }),
+          });
+          const data = await res.json();
+          if (!res.ok) return showMsg(data.error || "Google login failed", "error");
+          saveAndGo(data);
+        } catch {
+          showMsg("Network error during Google sign-in.", "error");
+        }
       }
 
       // ── Signup ──
